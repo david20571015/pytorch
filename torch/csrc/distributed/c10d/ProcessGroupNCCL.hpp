@@ -74,6 +74,12 @@ static std::vector<std::string> TORCH_NCCL_TRACE_BUFFER_SIZE = {
 static std::vector<std::string> TORCH_NCCL_WAIT_TIMEOUT_DUMP_MILSEC = {
     "TORCH_NCCL_WAIT_TIMEOUT_DUMP_MILSEC"};
 
+static std::vector<std::string> TORCH_NCCL_TIMEOUT_CHECK_MILSEC = {
+    "TORCH_NCCL_TIMEOUT_CHECK_MILSEC"};
+
+static std::vector<std::string> TORCH_NCCL_WATCHDOG_CHECK_MILSEC = {
+    "TORCH_NCCL_WATCHDOG_CHECK_MILSEC"};
+
 constexpr const char* NCCL_BACKEND_NAME = "nccl";
 
 constexpr const char* TIMEOUT_DUMP = "timeout_dump";
@@ -832,6 +838,10 @@ class TORCH_API ProcessGroupNCCL : public Backend {
 
   // Extra time of sleep when waiting for timeout dump to finish.
   int waitTimeoutDumpInMilSec_;
+
+  int timeoutCheckInMilSec_;
+
+  int watchdogCheckInMilSec_;
 
   // Size of ring buffer where we store NCCL Traces for debugging.
   int ncclTraceBufferSize_;
