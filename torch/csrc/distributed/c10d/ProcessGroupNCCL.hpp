@@ -71,6 +71,9 @@ static std::vector<std::string> TORCH_NCCL_HEARTBEAT_TIMEOUT_SEC = {
 static std::vector<std::string> TORCH_NCCL_TRACE_BUFFER_SIZE = {
     "TORCH_NCCL_TRACE_BUFFER_SIZE"};
 
+static std::vector<std::string> TORCH_NCCL_WAIT_TIMEOUT_DUMP_MILSEC = {
+    "TORCH_NCCL_WAIT_TIMEOUT_DUMP_MILSEC"};
+
 constexpr const char* NCCL_BACKEND_NAME = "nccl";
 
 constexpr const char* TIMEOUT_DUMP = "timeout_dump";
@@ -748,6 +751,11 @@ class TORCH_API ProcessGroupNCCL : public Backend {
   // Logs on timeout, and asserts the future's status is as expected.
   void waitForDumpOrTimeout(std::future<bool>& fut, size_t timeout_sec = 30);
 
+  // Helper to have a potential additional sleep so that dumps from all ranks
+  // are likely to finish before exit.
+  void extraWaitForDumpUntil(
+      const std::chrono::time_point<std::chrono::steady_clock>& wakeUpTime);
+
   // When watchdog timeout, this function will be called and return debug info
   // for users. For now we only get information from retrieveDesyncReport.
   // We are working on enabling more useful debug information for watchdog
@@ -821,6 +829,9 @@ class TORCH_API ProcessGroupNCCL : public Backend {
 
   // The time interval used for deciding whether there is no watchdog heartbeat.
   int heartbeatTimeoutInSec_;
+
+  // Extra time of sleep when waiting for timeout dump to finish.
+  int waitTimeoutDumpInMilSec_;
 
   // Size of ring buffer where we store NCCL Traces for debugging.
   int ncclTraceBufferSize_;
