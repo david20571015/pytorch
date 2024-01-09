@@ -61,6 +61,11 @@ ScalarType promoteTypes(ScalarType a, ScalarType b) {
         toString(b));
   }
 
+  if ((a == ScalarType::Bits8 && b == ScalarType::Byte) ||
+      (a == ScalarType::Byte && b == ScalarType::Bits8)) {
+    return ScalarType::Byte;
+  }
+
   if (isBitsType(a) || isBitsType(b)) {
     return ScalarType::Undefined;
   }
