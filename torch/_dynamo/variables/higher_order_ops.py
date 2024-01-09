@@ -430,6 +430,26 @@ class TorchHigherOrderOperatorVariable(VariableTracker):
         unimplemented(f"HigherOrderOperator {self.value.__name__}")
 
 
+class FunctorchVmapHigherOrderVariable(UserFunctionVariable):
+    def call_function(
+        self, tx, args: List[VariableTracker], kwargs: Dict[str, VariableTracker]
+    ) -> VariableTracker:
+        try:
+            # Try to trace through vmap call
+            return super().call_function(tx, args, kwargs)
+        except Unsupported:
+            # In case of failure, mark the functino as skipped to avoid dynamo from
+            # trying to trace it again
+            from torch._C._dynamo import eval_frame
+
+            if hasattr(args[0], "get_code"):
+                # methods implemented in C++ don't have '__code__'
+                eval_frame.skip_code(args[0].get_code())
+
+            # Graph break
+            raise
+
+
 class CondHigherOrderVariable(TorchHigherOrderOperatorVariable):
     @raise_hard_error_if_graph_break(
         reason="Cond doesn't work unless it is captured completely with torch.compile."
@@ -1019,7 +1039,7 @@ class FunctorchGradHigherOrderVariable(TorchHigherOrderOperatorVariable):
                 return TupleVariable([TupleVariable(items), aux])
 
 
-class FunctorchVmapHigherOrderVariable(TorchHigherOrderOperatorVariable):
+class _FunctorchVmapHigherOrderVariable(TorchHigherOrderOperatorVariable):
     def call_function(
         self, tx, args: "List[VariableTracker]", kwargs: "Dict[str, VariableTracker]"
     ) -> "VariableTracker":
