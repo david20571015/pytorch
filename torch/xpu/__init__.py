@@ -1,3 +1,7 @@
+r"""
+This package is lazily initialized, so you can always import it.
+"""
+import threading
 from functools import lru_cache
 from typing import Any, Dict, Optional, Union
 
@@ -6,6 +10,9 @@ import torch._C
 from .. import device as _device
 from ._utils import _dummy_type, _get_device_index
 
+_initialized = False
+_initialization_lock = threading.Lock()
+_is_in_bad_fork = getattr(torch._C, "_xpu_isInBadFork", lambda: False)
 _device_t = Union[_device, str, int, None]
 has_half: bool = True
 
@@ -30,11 +37,6 @@ else:
         raise NotImplementedError("PyTorch was compiled without XPU support")
 
 
-# TODO: Enable lazy init.
-if _is_compiled():
-    torch._C._xpu_init()
-
-
 @lru_cache(maxsize=1)
 def device_count() -> int:
     r"""Return the number of XPU device available."""
@@ -52,6 +54,42 @@ def is_available() -> bool:
 def is_bf16_supported():
     r"""Return a bool indicating if the current XPU device supports dtype bfloat16."""
     return True
+
+
+def is_initialized():
+    r"""Return whether PyTorch's XPU state has been initialized."""
+    return _initialized and not _is_in_bad_fork()
+
+
+def init():
+    r"""Initialize PyTorch's XPU state.
+    This is a Python API about lazy initialization that avoids initializing
+    XPU until the first time it is accessed. Does nothing if the XPU state is
+    already initialized.
+    """
+    _lazy_init()
+
+
+def _lazy_init():
+    global _initialized
+    if is_initialized():
+        return
+    with _initialization_lock:
+        # This test was was protected via GIL. Double-check whether XPU has
+        # already been initialized.
+        if is_initialized():
+            return
+        # Stop promptly upon encountering a bad fork error.
+        if _is_in_bad_fork():
+            raise RuntimeError(
+                "Cannot re-initialize XPU in forked subprocess. To use XPU with "
+                "multiprocessing, you must use the 'spawn' start method"
+            )
+        if not _is_compiled():
+            raise AssertionError("Torch not compiled with XPU enabled")
+        # This function inits XPU backend and detects bad fork processing.
+        torch._C._xpu_init()
+        _initialized = True
 
 
 class _DeviceGuard:
@@ -109,6 +147,7 @@ def set_device(device: _device_t) -> None:
         device (torch.device or int or str): selected device. This function is a
             no-op if this argument is negative.
     """
+    _lazy_init()
     device = _get_device_index(device)
     if device >= 0:
         torch._C._xpu_setDevice(device)
@@ -160,6 +199,7 @@ def get_device_properties(device: _device_t) -> _XpuDeviceProperties:
     Returns:
         _XpuDeviceProperties: the properties of the device
     """
+    _lazy_init()
     device = _get_device_index(device, optional=True)
     if device < 0 or device >= device_count():
         raise AssertionError("Invalid device index")
@@ -168,6 +208,7 @@ def get_device_properties(device: _device_t) -> _XpuDeviceProperties:
 
 def current_device() -> int:
     r"""Return the index of a currently selected device."""
+    _lazy_init()
     return torch._C._xpu_getDevice()
 
 
@@ -193,7 +234,9 @@ __all__ = [
     "get_device_name",
     "get_device_properties",
     "has_half",
+    "init",
     "is_available",
     "is_bf16_supported",
+    "is_initialized",
     "set_device",
 ]
